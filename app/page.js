@@ -1,101 +1,331 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect } from "react";
+import { Line } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from "chart.js";
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  // State for form inputs
+  const [loanAmount, setLoanAmount] = useState(10000);
+  const [interestRate, setInterestRate] = useState(5);
+  const [loanTerm, setLoanTerm] = useState(5);
+  const [additionalPayment, setAdditionalPayment] = useState(0);
+  
+  // State for calculation results
+  const [monthlyPayment, setMonthlyPayment] = useState(0);
+  const [totalPayment, setTotalPayment] = useState(0);
+  const [totalInterest, setTotalInterest] = useState(0);
+  const [payoffTime, setPayoffTime] = useState(0);
+  const [amortizationSchedule, setAmortizationSchedule] = useState([]);
+  const [amortizationWithExtra, setAmortizationWithExtra] = useState([]);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Calculate loan details when inputs change
+  useEffect(() => {
+    if (loanAmount > 0 && interestRate > 0 && loanTerm > 0) {
+      calculateLoan();
+    }
+  }, [loanAmount, interestRate, loanTerm, additionalPayment]);
+
+  const calculateLoan = () => {
+    // Convert annual interest rate to monthly
+    const monthlyRate = interestRate / 100 / 12;
+    const termMonths = loanTerm * 12;
+    
+    // Calculate standard monthly payment (PMT formula)
+    const payment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, termMonths)) / 
+                   (Math.pow(1 + monthlyRate, termMonths) - 1);
+    
+    setMonthlyPayment(payment || 0);
+    
+    // Generate amortization schedule without extra payments
+    const standardSchedule = generateAmortizationSchedule(loanAmount, monthlyRate, termMonths, 0);
+    setAmortizationSchedule(standardSchedule);
+    setTotalPayment(standardSchedule.length > 0 ? standardSchedule[standardSchedule.length - 1].totalPaid : 0);
+    setTotalInterest(standardSchedule.length > 0 ? standardSchedule[standardSchedule.length - 1].totalInterest : 0);
+    
+    // Generate amortization schedule with extra payments
+    const extraSchedule = generateAmortizationSchedule(loanAmount, monthlyRate, termMonths, additionalPayment);
+    setAmortizationWithExtra(extraSchedule);
+    setPayoffTime(extraSchedule.length/12); // in years
+  };
+
+  const generateAmortizationSchedule = (principal, monthlyRate, termMonths, extraPayment) => {
+    let balance = principal;
+    let totalInterestPaid = 0;
+    let totalPaid = 0;
+    const schedule = [];
+    
+    // Calculate standard monthly payment
+    const monthlyPayment = principal * (monthlyRate * Math.pow(1 + monthlyRate, termMonths)) / 
+                          (Math.pow(1 + monthlyRate, termMonths) - 1);
+    
+    let month = 1;
+    
+    // Generate schedule until loan is paid off
+    while (balance > 0 && month <= termMonths) {
+      // Calculate interest for this month
+      const interestPayment = balance * monthlyRate;
+      
+      // Calculate principal for this month
+      let principalPayment = monthlyPayment - interestPayment;
+      
+      // Add extra payment
+      principalPayment += extraPayment;
+      
+      // Adjust if we're paying more than remaining balance
+      if (principalPayment > balance) {
+        principalPayment = balance;
+      }
+      
+      // Update balance
+      balance -= principalPayment;
+      
+      // Update totals
+      totalInterestPaid += interestPayment;
+      totalPaid += (principalPayment + interestPayment);
+      
+      // Add to schedule
+      schedule.push({
+        month,
+        payment: principalPayment + interestPayment,
+        principalPayment,
+        interestPayment,
+        balance,
+        totalInterest: totalInterestPaid,
+        totalPaid,
+      });
+      
+      // If balance is paid off, break
+      if (balance <= 0) break;
+      
+      month++;
+    }
+    
+    return schedule;
+  };
+
+  // Prepare chart data
+  const chartData = {
+    labels: Array.from({ length: Math.max(amortizationSchedule.length, amortizationWithExtra.length) }, (_, i) => i + 1),
+    datasets: [
+      {
+        label: 'Standard Payment',
+        data: amortizationSchedule.map(item => item.balance),
+        borderColor: 'rgb(53, 162, 235)',
+        backgroundColor: 'rgba(53, 162, 235, 0.5)',
+      },
+      {
+        label: 'With Extra Payment',
+        data: amortizationWithExtra.map(item => item.balance),
+        borderColor: 'rgb(255, 99, 132)',
+        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+      },
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      title: {
+        display: true,
+        text: 'Loan Balance Over Time',
+      },
+    },
+    scales: {
+      y: {
+        title: {
+          display: true,
+          text: 'Remaining Balance ($)',
+        },
+      },
+      x: {
+        title: {
+          display: true,
+          text: 'Month',
+        },
+      },
+    },
+  };
+
+  // Add this helper function for number formatting
+  const formatCurrency = (number) => {
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(number);
+  };
+
+  // Update the input handlers to handle the "0" case
+  const handleLoanAmountChange = (e) => {
+    const value = e.target.value;
+    setLoanAmount(value === '' ? 0 : Number(value));
+  };
+
+  const handleInterestRateChange = (e) => {
+    const value = e.target.value;
+    setInterestRate(value === '' ? 0 : Number(value));
+  };
+
+  const handleLoanTermChange = (e) => {
+    const value = e.target.value;
+    setLoanTerm(value === '' ? 0 : Number(value));
+  };
+
+  const handleAdditionalPaymentChange = (e) => {
+    const value = e.target.value;
+    setAdditionalPayment(value === '' ? 0 : Number(value));
+  };
+
+  // Replace the previous useEffect with this one
+  useEffect(() => {
+    // This function will be called after the component mounts (client-side only)
+    const preventWheelChange = () => {
+      const handleWheel = (e) => {
+        // Prevent the default wheel behavior on number inputs
+        e.preventDefault();
+      };
+
+      // Add the event listener to all number inputs
+      const numberInputs = document.querySelectorAll('input[type="number"]');
+      numberInputs.forEach(input => {
+        input.addEventListener('wheel', handleWheel, { passive: false });
+      });
+
+      // Return cleanup function
+      return () => {
+        numberInputs.forEach(input => {
+          input.removeEventListener('wheel', handleWheel);
+        });
+      };
+    };
+
+    // Only run this in the browser, not during server-side rendering
+    const cleanup = typeof window !== 'undefined' ? preventWheelChange() : undefined;
+    
+    return cleanup;
+  }, []); // Empty dependency array means this runs once after initial render
+
+  return (
+    <div className="min-h-screen p-8 font-[family-name:var(--font-geist-sans)]">
+      <main className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold mb-8 text-center">Loan Payoff Calculator</h1>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold mb-4">Loan Details</h2>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Loan Amount ($)</label>
+              <input
+                type="number"
+                value={loanAmount === 0 ? '' : loanAmount}
+                onChange={handleLoanAmountChange}
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Annual Interest Rate (%)</label>
+              <input
+                type="number"
+                value={interestRate === 0 ? '' : interestRate}
+                onChange={handleInterestRateChange}
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                step="0.1"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Loan Term (years)</label>
+              <input
+                type="number"
+                value={loanTerm === 0 ? '' : loanTerm}
+                onChange={handleLoanTermChange}
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+              />
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Additional Monthly Payment ($)</label>
+              <input
+                type="number"
+                value={additionalPayment === 0 ? '' : additionalPayment}
+                onChange={handleAdditionalPaymentChange}
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+              />
+            </div>
+          </div>
+          
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold mb-4">Payment Summary</h2>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Monthly Payment</p>
+                <p className="text-xl font-bold">${formatCurrency(monthlyPayment)}</p>
+              </div>
+              
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Total Interest</p>
+                <p className="text-xl font-bold">${formatCurrency(totalInterest)}</p>
+              </div>
+              
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Total Payment</p>
+                <p className="text-xl font-bold">${formatCurrency(totalPayment)}</p>
+              </div>
+              
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Payoff Time with Extra</p>
+                <p className="text-xl font-bold">{payoffTime.toFixed(1)} years</p>
+              </div>
+              
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Time Saved</p>
+                <p className="text-xl font-bold">{(loanTerm - payoffTime).toFixed(1)} years</p>
+              </div>
+              
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Interest Saved</p>
+                <p className="text-xl font-bold">
+                  ${formatCurrency(totalInterest - (amortizationWithExtra.length > 0 ? 
+                    amortizationWithExtra[amortizationWithExtra.length - 1].totalInterest : 0))}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+          <h2 className="text-xl font-semibold mb-4">Loan Balance Over Time</h2>
+          <div className="h-80">
+            <Line options={chartOptions} data={chartData} />
+          </div>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
 }
