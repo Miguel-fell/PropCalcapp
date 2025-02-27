@@ -37,7 +37,7 @@ export default function Home() {
   
   // State for form inputs
   const [loanAmount, setLoanAmount] = useState(10000);
-  const [interestRate, setInterestRate] = useState(5);
+  const [interestRate, setInterestRate] = useState('5');
   const [loanTerm, setLoanTerm] = useState(5);
   const [additionalPayment, setAdditionalPayment] = useState(0);
   
@@ -53,6 +53,9 @@ export default function Home() {
   const [showFullTable, setShowFullTable] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 12; // Show 1 year at a time
+  
+  // Add this state to track the raw input value
+  const [interestRateInput, setInterestRateInput] = useState('5');
   
   // Format numbers with commas and 2 decimal places
   const formatCurrency = (number) => {
@@ -84,8 +87,11 @@ export default function Home() {
   
   const handleInterestRateChange = (e) => {
     const value = e.target.value;
-    if (value === '' || /^\d*\.?\d*$/.test(value)) {
-      setInterestRate(value === '' ? 0 : Number(value));
+    
+    // Allow any input that could be part of a valid number
+    // This includes digits, a single decimal point, and nothing else
+    if (value === '' || /^[0-9]*\.?[0-9]*$/.test(value)) {
+      setInterestRate(value);
     }
   };
   
@@ -137,14 +143,23 @@ export default function Home() {
   
   // Calculate loan details when inputs change
   useEffect(() => {
-    if (loanAmount > 0 && interestRate > 0 && loanTerm > 0) {
+    if (loanAmount > 0 && getNumericInterestRate() > 0 && loanTerm > 0) {
       calculateLoan();
     }
   }, [loanAmount, interestRate, loanTerm, additionalPayment]);
   
+  const getNumericInterestRate = () => {
+    const parsed = parseFloat(interestRate);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+  
   const calculateLoan = () => {
+    if (loanAmount <= 0 || getNumericInterestRate() <= 0 || loanTerm <= 0) {
+      return;
+    }
+    
     // Convert annual interest rate to monthly
-    const monthlyRate = interestRate / 100 / 12;
+    const monthlyRate = getNumericInterestRate() / 100 / 12;
     const termMonths = loanTerm * 12;
     
     // Calculate standard monthly payment (PMT formula)
@@ -399,10 +414,9 @@ export default function Home() {
               <label className="block text-sm font-medium mb-1 dark:text-gray-300">Annual Interest Rate (%)</label>
               <input
                 type="text"
-                value={interestRate === 0 ? '' : interestRate}
+                value={interestRate}
                 onChange={handleInterestRateChange}
                 className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                step="0.1"
                 placeholder="e.g. 5.25"
               />
             </div>
